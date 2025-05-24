@@ -1,3 +1,7 @@
+using FriendwithBooksBackend.Data;
+using FriendwithBooksBackend.Interfaces;
+using FriendwithBooksBackend.Repositories;
+using Microsoft.EntityFrameworkCore;
 using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,6 +11,21 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddDbContext<DataContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddScoped<IBookRepository, BookRepository>();
+
+// Thêm cấu hình CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend",
+        policy =>
+        {
+            policy.WithOrigins("http://localhost:5173") // Đúng với port frontend của bạn
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        });
+});
 
 var app = builder.Build();
 // Test the DB connection
@@ -30,6 +49,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("AllowFrontend");
 
 app.UseAuthorization();
 
