@@ -1,6 +1,7 @@
 using FriendwithBooksBackend.Data;
 using FriendwithBooksBackend.Interfaces;
 using FriendwithBooksBackend.Repositories;
+using FriendwithBooksBackend.Services;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,11 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<DataContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddScoped<IBookRepository, BookRepository>();
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHostedService<CachingServices>();
 
 // Thêm cấu hình CORS
 builder.Services.AddCors(options =>

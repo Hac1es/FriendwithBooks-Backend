@@ -16,9 +16,13 @@ namespace FriendwithBooksBackend.Models
         public string? Language { get; set; }
         public string? PageNum { get; set; }
         public string? Binding { get; set; }
-        public string? ImgURL { get; set; }
+        public string? ImgURL1 { get; set; }
+        public string? ImgURL2 { get; set; }
+        public string? ImgURL3 { get; set; }
         public int AvgRating { get; set; }
         public int TotalRating { get; set; }
+        public string? AgeGroup { get; set; } // all, 12, 18
+        public int Discount { get; set; }
         public Category? Category { get; set; }
         public ICollection<Cart>? Carts { get; set; }
         public ICollection<OrderDetail>? OrderDetails { get; set; }

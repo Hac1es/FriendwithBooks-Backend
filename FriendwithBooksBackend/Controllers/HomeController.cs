@@ -4,6 +4,7 @@ using FriendwithBooksBackend.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -15,28 +16,32 @@ namespace FriendwithBooksBackend.Controllers
     public class HomeController : Controller
     {
         private readonly IBookRepository _bookRepository;
+        private readonly IMemoryCache _cache;
 
-        public HomeController(IBookRepository bookRepository)
+        public HomeController(IBookRepository bookRepository, IMemoryCache cache)
         {
             _bookRepository = bookRepository;
+            _cache = cache;
         }
 
         // GET: api/Home/BestSellers
         [HttpGet("BestSellers")]
-        public async Task<IActionResult> GetBestSeller()
+        public IActionResult GetBestSeller()
         {
-            var result = await _bookRepository.GetBooks()
-            .Select(c => new
-            {
-                Title = c.Title,
-                Description = c.Description,
-                ImgURL = c.ImgURL
-            })
-            .Take(10)
-            .ToListAsync();
-            var count = await _bookRepository.GetBooks().CountAsync();
-            Console.WriteLine("Count: " + count);
-            return Ok(result);
+            if (_cache.TryGetValue("BestSellerData", out var cachedData))
+                return Ok(cachedData);
+
+            return Ok(new List<object>());
+        }
+
+        // GET: api/Home/FlashSale
+        [HttpGet("FlashSale")]
+        public IActionResult GetFlashSale()
+        {
+            if (_cache.TryGetValue("FlashSaleData", out var cachedData))
+                return Ok(cachedData);
+
+            return Ok(new List<object>());
         }
     }
 }

@@ -27,7 +27,7 @@ namespace FriendwithBooksBackend.Data
             foreach (var entity in modelBuilder.Model.GetEntityTypes())
             {
                 // Đổi tên bảng
-                entity.SetTableName(entity.GetTableName().ToLower());
+                entity.SetTableName(entity.GetTableName()!.ToLower());
 
                 // Đổi tên cột
                 foreach (var property in entity.GetProperties())

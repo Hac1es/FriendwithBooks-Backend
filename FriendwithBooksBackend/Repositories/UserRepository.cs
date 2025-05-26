@@ -4,22 +4,16 @@ using FriendwithBooksBackend.Models;
 
 namespace FriendwithBooksBackend.Repositories
 {
-    public class BookRepository : IBookRepository
+    public class UserRepository : IUserRepository
     {
         private readonly DataContext _context;
-
-        public BookRepository(DataContext context)
+        public UserRepository(DataContext context)
         {
             _context = context;
         }
-
-        public IQueryable<Book> GetBooks()
+        public IQueryable<User> GetUsers()
         {
-            return _context.Books;
-        }
-        public IQueryable<FlashSale> GetFlashSale()
-        {
-            return _context.FlashSales;
+            return _context.Users.AsQueryable();
         }
     }
 }
