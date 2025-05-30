@@ -3,7 +3,9 @@ using FriendwithBooksBackend.Interfaces;
 using FriendwithBooksBackend.Repositories;
 using FriendwithBooksBackend.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
@@ -12,12 +14,27 @@ builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+
+// Configure database with enhanced resilience
 builder.Services.AddDbContext<DataContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(30),
+            errorCodesToAdd: null))
+);
+
+// Configure background service behavior - prevent app termination on failure
+builder.Services.Configure<HostOptions>(options =>
+{
+    options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
+});
+
 builder.Services.AddScoped<IBookRepository, BookRepository>();
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IOrderRepository, OrderRepository>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHostedService<CachingServices>();
 
@@ -34,7 +51,8 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
-// Test the DB connection
+
+// Test the DB connection with better error handling
 var connString = builder.Configuration.GetConnectionString("DefaultConnection");
 try
 {
@@ -42,9 +60,18 @@ try
     conn.Open();
     Console.WriteLine("Connect to Supabase successful.");
 }
+catch (Npgsql.NpgsqlException ex) when (ex.InnerException is System.Net.Sockets.SocketException socketEx && socketEx.ErrorCode == 11004)
+{
+    Console.WriteLine($"DNS resolution error with Supabase host. Please check connection string: {ex.Message}");
+    // You might want to log this more formally
+}
 catch (Exception ex)
 {
-    Console.WriteLine("Failed to connect to Supabase: " + ex.Message);
+    Console.WriteLine($"Failed to connect to Supabase: {ex.Message}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner exception: {ex.InnerException.Message}");
+    }
 }
 
 // Configure the HTTP request pipeline.
