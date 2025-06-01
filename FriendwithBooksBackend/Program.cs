@@ -20,10 +20,12 @@ builder.Services.AddSwaggerGen();
 // Configure database with enhanced resilience
 builder.Services.AddDbContext<DataContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        npgsqlOptions => npgsqlOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorCodesToAdd: null))
+        npgsqlOptions => npgsqlOptions
+            .EnableRetryOnFailure(
+                maxRetryCount: 5,
+                maxRetryDelay: TimeSpan.FromSeconds(90),
+                errorCodesToAdd: null)
+    )
 );
 
 // Configure background service behavior - prevent app termination on failure
