@@ -6,6 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Npgsql;
 
+AppContext.SetSwitch("System.Net.DisableIPv6", false);
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
