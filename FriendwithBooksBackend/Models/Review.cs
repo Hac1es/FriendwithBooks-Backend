@@ -1,7 +1,12 @@
-﻿namespace FriendwithBooksBackend.Models
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace FriendwithBooksBackend.Models
 {
     public class Review
     {
+        [Key]
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int ReviewID { get; set; }
         public int UserID { get; set; }
         public int BookID { get; set; }

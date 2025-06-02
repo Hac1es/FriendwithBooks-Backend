@@ -1,5 +1,6 @@
 ﻿using FriendwithBooksBackend.Interfaces;
 using FriendwithBooksBackend.Models;
+using FriendwithBooksBackend.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
@@ -117,7 +118,8 @@ namespace FriendwithBooksBackend.Controllers
         }
 
         // GET: api/Book/query?page={page}&promo={promo}&price={price}
-        // &priceMin={}&priceMax={}&age={age}&type={type}&category={category}
+        // &priceMin={}&priceMax={}&age={age}&type={type}
+        // &category={category}&name={name}
         [HttpGet("query")]
         public async Task<IActionResult> GetBooksByQueries([FromQuery] int page = 1,
             [FromQuery] bool? promo = null,
@@ -126,7 +128,8 @@ namespace FriendwithBooksBackend.Controllers
             [FromQuery] string? priceMax = null,
             [FromQuery] string? age = null,
             [FromQuery] string? type = null,
-            [FromQuery] int? category = null)
+            [FromQuery] int? category = null,
+            [FromQuery] string? name = null)
         {
             if (page < 1) page = 1;
             int pageSize = 12;
@@ -189,6 +192,12 @@ namespace FriendwithBooksBackend.Controllers
                 query = query.Where(b => b.CategoryID == category.Value);
             }
 
+            // Lọc "Tên sách"
+            if (!string.IsNullOrEmpty(name))
+            {
+                query = query.Where(b => b.Title.ToLower().Replace(" ", "").Contains(name.Replace(" ", "").ToLower()));
+            }
+
             // Phân trang
             var totalItems = await query.CountAsync();
             var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
@@ -235,6 +244,33 @@ namespace FriendwithBooksBackend.Controllers
                 })
                 .ToListAsync();
             return Ok(reviews);
+        }
+
+        //PUT: api/Book/addReview
+        [HttpPut("addReview")]
+        public async Task<IActionResult> AddReview([FromBody] ReviewRequest reviewReq)
+        {
+            if (reviewReq == null || !ModelState.IsValid)
+            {
+                return BadRequest(new { message = "Invalid review data" });
+            }
+            // Validate that the book exists
+            var bookExists = await _bookRepository.GetBooks().AnyAsync(b => b.BookID == reviewReq.BookID);
+            if (!bookExists)
+            {
+                return NotFound(new { message = "Book not found" });
+            }
+            var review = new Review
+            {
+                Rating = reviewReq.Rating,
+                Comment = reviewReq.Comment,
+                UserID = reviewReq.UserID,
+                ReviewDate = DateTime.UtcNow,
+                BookID = reviewReq.BookID
+            };
+            // Save the review to the database
+            await _reviewRepository.AddReviewAsync(review);
+            return Ok(new { message = "Review added successfully" });
         }
     }
 }

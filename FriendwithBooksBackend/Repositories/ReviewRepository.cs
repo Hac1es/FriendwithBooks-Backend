@@ -15,5 +15,15 @@ namespace FriendwithBooksBackend.Repositories
         {
             return _context.Reviews.AsQueryable();
         }
+
+        public async Task AddReviewAsync(Review review)
+        {
+            if (review == null)
+            {
+                throw new ArgumentNullException(nameof(review), "Review cannot be null");
+            }
+            await _context.Reviews.AddAsync(review);
+            await _context.SaveChangesAsync();
+        }
     }
 }
