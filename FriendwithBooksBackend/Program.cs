@@ -8,6 +8,7 @@ using Npgsql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using Microsoft.AspNetCore.Authentication.Google;
 
 AppContext.SetSwitch("System.Net.DisableIPv6", false);
 
@@ -77,7 +78,12 @@ builder.Services.AddAuthentication(options =>
         ValidIssuer = jwtIssuer,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
     };
-});
+})
+.AddGoogle(GoogleDefaults.AuthenticationScheme, options =>
+ {
+     options.ClientId = builder.Configuration["Authentication:Google:ClientId"];
+     options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"];
+ });
 
 var app = builder.Build();
 
