@@ -7,6 +7,7 @@ using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using Google.Apis.Auth;
 
 namespace FriendwithBooksBackend.Controllers
 {
@@ -58,6 +59,41 @@ namespace FriendwithBooksBackend.Controllers
                 return Unauthorized(new { message = "Email chưa được đăng ký" });
             if (!VerifyPassword(dto.Password, user.Password))
                 return Unauthorized(new { message = "Mật khẩu không chính xác" });
+
+            var token = GenerateJwtToken(user);
+            return Ok(new { token });
+        }
+
+        [HttpPost("google-login")]
+        public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
+        {
+            GoogleJsonWebSignature.Payload payload;
+            try
+            {
+                payload = await GoogleJsonWebSignature.ValidateAsync(dto.IdToken);
+            }
+            catch
+            {
+                return Unauthorized(new { message = "Token Google không hợp lệ" });
+            }
+
+            // Kiểm tra user đã tồn tại chưa
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
+            if (user == null)
+            {
+                // Đăng ký user mới
+                user = new User
+                {
+                    FullName = payload.Name ?? payload.Email,
+                    Email = payload.Email,
+                    Password = "", // Không cần mật khẩu cho user Google
+                    Avatar = payload.Picture,
+                    RegistrationDate = DateTime.UtcNow,
+                    Role = "user"
+                };
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+            }
 
             var token = GenerateJwtToken(user);
             return Ok(new { token });
@@ -121,6 +157,11 @@ namespace FriendwithBooksBackend.Controllers
         {
             public string Email { get; set; }
             public string Password { get; set; }
+        }
+
+        public class GoogleLoginDto
+        {
+            public string IdToken { get; set; }
         }
     }
 }
