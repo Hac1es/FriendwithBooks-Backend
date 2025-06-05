@@ -1,13 +1,14 @@
 ﻿using FriendwithBooksBackend.Data;
 using FriendwithBooksBackend.Models;
+using Google.Apis.Auth;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using Google.Apis.Auth;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace FriendwithBooksBackend.Controllers
 {
@@ -64,7 +65,8 @@ namespace FriendwithBooksBackend.Controllers
             return Ok(new { token });
         }
 
-        [HttpPost("google-login")]
+        // POST: api/Auth/googleLogin
+        [HttpPost("googleLogin")]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
             GoogleJsonWebSignature.Payload payload;
@@ -94,6 +96,33 @@ namespace FriendwithBooksBackend.Controllers
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
             }
+
+            var token = GenerateJwtToken(user);
+            return Ok(new { token });
+        }
+
+        // PUT: api/Auth/updateProfile
+        [Authorize]
+        [HttpPut("updateProfile")]
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileDto dto)
+        {
+            var userIdClaim = User.FindFirst("userId");
+            if (userIdClaim == null)
+                return Unauthorized(new { message = "Không xác thực được người dùng." });
+
+            if (!int.TryParse(userIdClaim.Value, out int userId))
+                return Unauthorized(new { message = "ID người dùng không hợp lệ." });
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.UserID == userId);
+            if (user == null)
+                return NotFound(new { message = "Không tìm thấy người dùng." });
+
+            user.FullName = dto.FullName;
+            user.Phone = dto.Phone;
+            user.Address = dto.Address;
+            user.Avatar = dto.Avatar;
+
+            await _context.SaveChangesAsync();
 
             var token = GenerateJwtToken(user);
             return Ok(new { token });
@@ -162,6 +191,14 @@ namespace FriendwithBooksBackend.Controllers
         public class GoogleLoginDto
         {
             public string IdToken { get; set; }
+        }
+
+        public class UpdateProfileDto
+        {
+            public string FullName { get; set; }
+            public string? Phone { get; set; }
+            public string? Address { get; set; }
+            public string? Avatar { get; set; }    
         }
     }
 }
