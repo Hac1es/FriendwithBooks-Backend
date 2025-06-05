@@ -66,7 +66,7 @@ namespace FriendwithBooksBackend.Controllers
         }
 
         // POST: api/Auth/googleLogin
-        [HttpPost("googleLogin")]
+        /*[HttpPost("googleLogin")]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
             GoogleJsonWebSignature.Payload payload;
@@ -99,7 +99,7 @@ namespace FriendwithBooksBackend.Controllers
 
             var token = GenerateJwtToken(user);
             return Ok(new { token });
-        }
+        }*/
 
         // PUT: api/Auth/updateProfile
         [Authorize]
@@ -121,6 +121,22 @@ namespace FriendwithBooksBackend.Controllers
             user.Phone = dto.Phone;
             user.Address = dto.Address;
             user.Avatar = dto.Avatar;
+
+            await _context.SaveChangesAsync();
+
+            var token = GenerateJwtToken(user);
+            return Ok(new { token });
+        }
+
+        // PUT: api/Auth/forgotPassword
+        [HttpPost("forgotPassword")]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
+            if (user == null)
+                return Unauthorized(new { message = "Email chưa được đăng ký" });
+
+            user.Password = HashPassword(dto.Password);
 
             await _context.SaveChangesAsync();
 
@@ -199,6 +215,12 @@ namespace FriendwithBooksBackend.Controllers
             public string? Phone { get; set; }
             public string? Address { get; set; }
             public string? Avatar { get; set; }    
+        }
+
+        public class ForgotPasswordDto
+        {
+            public string Email { get; set; }
+            public string Password { get; set; }
         }
     }
 }
