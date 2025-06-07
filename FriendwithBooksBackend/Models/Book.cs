@@ -1,9 +1,11 @@
 ﻿using Microsoft.AspNetCore.Mvc.ViewEngines;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace FriendwithBooksBackend.Models
 {
     public class Book
     {
+        [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int BookID { get; set; }
         public string? Supplier { get; set; }
         public string? Title { get; set; }
@@ -16,8 +18,11 @@ namespace FriendwithBooksBackend.Models
         public string? Language { get; set; }
         public string? PageNum { get; set; }
         public string? Binding { get; set; }
+        [Column("imgurl1")]
         public string? ImgURL1 { get; set; }
+        [Column("imgurl2")]
         public string? ImgURL2 { get; set; }
+        [Column("imgurl3")]
         public string? ImgURL3 { get; set; }
         public int AvgRating { get; set; }
         public int TotalRating { get; set; }
