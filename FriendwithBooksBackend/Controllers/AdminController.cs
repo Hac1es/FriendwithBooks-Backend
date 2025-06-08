@@ -1,4 +1,4 @@
-using FriendwithBooksBackend.Interfaces;
+﻿using FriendwithBooksBackend.Interfaces;
 using FriendwithBooksBackend.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +6,7 @@ using Microsoft.Extensions.Caching.Memory;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations;
 
 namespace FriendwithBooksBackend.Controllers
 {
@@ -36,7 +37,7 @@ namespace FriendwithBooksBackend.Controllers
         }
 
         #region Product Management
-        
+
         // GET: api/admin/products
         [HttpGet("products")]
         public async Task<IActionResult> GetAllProducts([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -62,7 +63,16 @@ namespace FriendwithBooksBackend.Controllers
                     b.CategoryID,
                     b.Discount,
                     b.ImgURL1,
-                    b.AvgRating
+                    b.ImgURL2,
+                    b.ImgURL3,
+                    b.AvgRating,
+                    b.Description,
+                    b.Supplier,
+                    b.PublishYear,
+                    b.PageNum,
+                    b.Language,
+                    b.Binding,
+                    b.AgeGroup
                 })
                 .ToListAsync();
 
@@ -94,55 +104,141 @@ namespace FriendwithBooksBackend.Controllers
 
         // POST: api/admin/products
         [HttpPost("products")]
-        public async Task<IActionResult> CreateProduct([FromBody] Book book)
+        public async Task<IActionResult> CreateProduct([FromBody] CreateBookRequest request)
         {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
             try
             {
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _bookRepository.AddBook(book);
-                
-                // Clear relevant cache entries
+                // Validate the request
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                        );
+
+                    return BadRequest(new { message = "Validation failed", errors });
+                }
+
+                // Additional business validation
+                if (request.Price <= 0)
+                    return BadRequest(new { message = "Price must be greater than 0" });
+
+                if (request.Discount < 0 || request.Discount > 100)
+                    return BadRequest(new { message = "Discount must be between 0 and 100" });
+
+                if (request.Stock < 0)
+                    return BadRequest(new { message = "Stock cannot be negative" });
+
+                // Check if book with same title exists in same category
+                var exists = await _bookRepository.GetBooks()
+                    .AnyAsync(b => b.Title == request.Title && b.CategoryID == request.CategoryID);
+                if (exists)
+                    return BadRequest(new { message = "Book with the same title already exists in this category." });
+
+                // Create new book
+                var book = new Book
+                {
+                    Title = request.Title,
+                    Author = request.Author,
+                    Description = request.Description ?? "",
+                    Price = request.Price,
+                    Stock = request.Stock,
+                    CategoryID = request.CategoryID,
+                    Discount = request.Discount,
+                    ImgURL1 = request.ImgURL1 ?? "",
+                    ImgURL2 = request.ImgURL2 ?? "",
+                    ImgURL3 = request.ImgURL3 ?? "",
+                    Supplier = request.Supplier ?? "",
+                    PublishYear = DateTime.SpecifyKind(new DateTime(request.PublishYear, 1, 1), DateTimeKind.Utc),
+                    PageNum = request.PageNum.ToString(),
+                    Language = request.Language ?? "Tiếng Việt",
+                    Binding = request.Binding ?? "Bìa mềm",
+                    AgeGroup = request.AgeGroup ?? "all",
+                    AvgRating = 0,
+                    TotalRating = 0
+                };
+
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                context.Books.Add(book);
+                await context.SaveChangesAsync();
+
                 _cache.Remove("BestSellerData");
-                
+                if (book.Discount > 0)
+                    _cache.Remove("FlashSaleData");
+
                 return CreatedAtAction(nameof(GetProductById), new { id = book.BookID }, book);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
+                return StatusCode(500, new { message = $"Internal server error: {ex.Message}", details = ex.InnerException?.Message });
             }
         }
 
-        // PUT: api/admin/products/
+        // PUT: api/admin/products/{id}
         [HttpPut("products/{id}")]
-        public async Task<IActionResult> UpdateProduct(int id, [FromBody] Book book)
+        public async Task<IActionResult> UpdateProduct(int id, [FromBody] UpdateBookRequest request)
         {
-            if (id != book.BookID)
-            {
-                return BadRequest(new { message = "ID mismatch" });
-            }
-
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
             try
             {
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _bookRepository.UpdateBook(book);
-                
-                // Clear relevant cache entries
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => kvp.Value.Errors.Select(e => e.ErrorMessage).ToArray()
+                        );
+
+                    return BadRequest(new { message = "Validation failed", errors });
+                }
+
+                // Additional business validation
+                if (request.Price <= 0)
+                    return BadRequest(new { message = "Price must be greater than 0" });
+
+                if (request.Discount < 0 || request.Discount > 100)
+                    return BadRequest(new { message = "Discount must be between 0 and 100" });
+
+                if (request.Stock < 0)
+                    return BadRequest(new { message = "Stock cannot be negative" });
+
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var existingBook = await context.Books.FirstOrDefaultAsync(b => b.BookID == id);
+                if (existingBook == null)
+                    return NotFound(new { message = "Book not found" });
+
+                // Update fields
+                existingBook.Title = request.Title;
+                existingBook.Author = request.Author;
+                existingBook.Description = request.Description ?? "";
+                existingBook.Price = request.Price;
+                existingBook.Stock = request.Stock;
+                existingBook.ImgURL1 = request.ImgURL1 ?? "";
+                existingBook.ImgURL2 = request.ImgURL2 ?? "";
+                existingBook.ImgURL3 = request.ImgURL3 ?? "";
+                existingBook.AgeGroup = request.AgeGroup ?? "all";
+                existingBook.CategoryID = request.CategoryID;
+                existingBook.Supplier = request.Supplier ?? "";
+                existingBook.PublishYear = new DateTime(request.PublishYear, 1, 1); 
+                existingBook.Language = request.Language ?? "Tiếng Việt";
+                existingBook.PageNum = request.PageNum.ToString();
+                existingBook.Binding = request.Binding ?? "Bìa mềm";
+                existingBook.Discount = request.Discount;
+
+                await context.SaveChangesAsync();
+
                 _cache.Remove("BestSellerData");
-                if (book.Discount > 0)
+                if (existingBook.Discount > 0)
                     _cache.Remove("FlashSaleData");
-                
+
                 return NoContent();
             }
             catch (Exception ex)
@@ -151,88 +247,11 @@ namespace FriendwithBooksBackend.Controllers
             }
         }
 
-        // DELETE: api/admin/products/
-        [HttpDelete("products/{id}")]
-        public async Task<IActionResult> DeleteProduct(int id)
-        {
-            var book = await _bookRepository.GetBooks()
-                .Where(b => b.BookID == id)
-                .FirstOrDefaultAsync();
 
-            if (book == null)
-            {
-                return NotFound(new { message = "Book not found" });
-            }
-
-            try
-            {
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _bookRepository.DeleteBook(id);
-                
-                // Clear relevant cache entries
-                _cache.Remove("BestSellerData");
-                _cache.Remove("FlashSaleData");
-                
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
-            }
-        }
-        
-        // POST: api/admin/products/flash-sale
-        [HttpPost("products/flash-sale")]
-        public async Task<IActionResult> AddFlashSale([FromBody] FlashSale flashSale)
-        {
-            if (!ModelState.IsValid)
-            {
-                return BadRequest(ModelState);
-            }
-
-            try
-            {
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _bookRepository.AddFlashSale(flashSale);
-                
-                // Clear cache
-                _cache.Remove("FlashSaleData");
-                
-                return Ok(new { message = "Flash sale created successfully" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
-            }
-        }
-        
-        // DELETE: api/admin/products/flash-sale/
-        [HttpDelete("products/flash-sale/{id}")]
-        public async Task<IActionResult> RemoveFlashSale(int id)
-        {
-            try
-            {
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _bookRepository.RemoveFlashSale(id);
-                
-                // Clear cache
-                _cache.Remove("FlashSaleData");
-                
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
-            }
-        }
-        
         #endregion
 
         #region Order Management
-        
+
         // GET: api/admin/orders
         [HttpGet("orders")]
         public async Task<IActionResult> GetAllOrders([FromQuery] int page = 1, [FromQuery] int pageSize = 20, [FromQuery] string? status = null)
@@ -241,12 +260,12 @@ namespace FriendwithBooksBackend.Controllers
             if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
             var query = _orderRepository.GetOrders();
-            
+
             if (!string.IsNullOrEmpty(status))
             {
                 query = query.Where(o => o.Status == status);
             }
-            
+
             var totalItems = await query.CountAsync();
             var totalPages = (int)Math.Ceiling(totalItems / (double)pageSize);
 
@@ -276,72 +295,10 @@ namespace FriendwithBooksBackend.Controllers
             });
         }
 
-        // GET: api/admin/orders/5
-        [HttpGet("orders/{id}")]
-        public async Task<IActionResult> GetOrderById(int id)
-        {
-            var order = await _orderRepository.GetOrders()
-                .Where(o => o.OrderID == id)
-                .Select(o => new
-                {
-                    o.OrderID,
-                    o.UserID,
-                    Customer = new { o.User.FullName, o.User.Email, o.User.Phone },
-                    o.OrderDate,
-                    o.TotalAmount,
-                    o.Status,
-                    PaymentMethod = o.PaymentMethod.MethodName,
-                    Items = o.OrderDetails.Select(od => new
-                    {
-                        od.BookID,
-                        BookTitle = od.Book.Title,
-                        od.Quantity,
-                        od.UnitPrice,
-                        Subtotal = od.Quantity * od.UnitPrice
-                    })
-                })
-                .FirstOrDefaultAsync();
-
-            if (order == null)
-            {
-                return NotFound(new { message = "Order not found" });
-            }
-
-            return Ok(order);
-        }
-
-        // PUT: api/admin/orders/5
-        [HttpPut("orders/{id}")]
-        public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] OrderStatusUpdate update)
-        {
-            var order = await _orderRepository.GetOrders()
-                .Where(o => o.OrderID == id)
-                .FirstOrDefaultAsync();
-
-            if (order == null)
-            {
-                return NotFound(new { message = "Order not found" });
-            }
-
-            try
-            {
-                order.Status = update.Status;
-                // Implementation depends on actual repository methods
-                // This is a placeholder for the actual implementation
-                // await _orderRepository.UpdateOrder(order);
-                
-                return NoContent();
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
-            }
-        }
-        
         #endregion
 
         #region User Management
-        
+
         // GET: api/admin/users
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -429,7 +386,7 @@ namespace FriendwithBooksBackend.Controllers
                 // Implementation depends on actual repository methods
                 // This is a placeholder for the actual implementation
                 // await _userRepository.DeleteUser(id);
-                
+
                 return NoContent();
             }
             catch (Exception ex)
@@ -437,7 +394,7 @@ namespace FriendwithBooksBackend.Controllers
                 return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
             }
         }
-        
+
         // PUT: api/admin/users/5/role
         [HttpPut("users/{id}/role")]
         public async Task<IActionResult> UpdateUserRole(int id, [FromBody] UserRoleUpdate update)
@@ -457,7 +414,7 @@ namespace FriendwithBooksBackend.Controllers
                 // Implementation depends on actual repository methods
                 // This is a placeholder for the actual implementation
                 // await _userRepository.UpdateUser(user);
-                
+
                 return NoContent();
             }
             catch (Exception ex)
@@ -465,11 +422,11 @@ namespace FriendwithBooksBackend.Controllers
                 return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
             }
         }
-        
+
         #endregion
 
         #region Statistics
-        
+
         // GET: api/admin/statistics/sales
         [HttpGet("statistics/sales")]
         public async Task<IActionResult> GetSalesStatistics([FromQuery] string period = "month")
@@ -478,7 +435,7 @@ namespace FriendwithBooksBackend.Controllers
             {
                 DateTime startDate;
                 DateTime endDate = DateTime.Now;
-                
+
                 switch (period.ToLower())
                 {
                     case "day":
@@ -597,7 +554,7 @@ namespace FriendwithBooksBackend.Controllers
             {
                 DateTime startDate;
                 DateTime endDate = DateTime.Now;
-                
+
                 switch (period.ToLower())
                 {
                     case "day":
@@ -660,13 +617,13 @@ namespace FriendwithBooksBackend.Controllers
                 return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
             }
         }
-        
+
         #endregion
 
         #region Chat Management
-        
+
         // Models for chat functionality would need to be created
-        
+
         // GET: api/admin/chat/conversations
         [HttpGet("chat/conversations")]
         public async Task<IActionResult> GetAllConversations([FromQuery] int page = 1, [FromQuery] int pageSize = 20)
@@ -712,11 +669,381 @@ namespace FriendwithBooksBackend.Controllers
             // Returning a placeholder response
             return NoContent();
         }
-        
+        // GET: api/admin/flash-sale
+        [HttpGet("flash-sale")]
+        public async Task<IActionResult> GetAllFlashSales()
+        {
+            try
+            {
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var flashSales = await context.FlashSales
+                    .Include(fs => fs.Book)
+                    .Select(fs => new
+                    {
+                        fs.FlashSaleID,
+                        fs.BookID,
+                        fs.DiscountPercent,
+                        fs.StartTime,
+                        fs.EndTime,
+                        BookTitle = fs.Book.Title,
+                        BookPrice = fs.Book.Price,
+                        BookImgURL = fs.Book.ImgURL1
+                    })
+                    .OrderByDescending(fs => fs.StartTime)
+                    .ToListAsync();
+
+                return Ok(flashSales);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi tải danh sách Flash Sale", error = ex.Message });
+            }
+        }
+
+        // GET: api/admin/flash-sale/book/{bookId}
+        [HttpGet("flash-sale/book/{bookId}")]
+        public async Task<IActionResult> GetFlashSalesByBookId(int bookId)
+        {
+            try
+            {
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var flashSales = await context.FlashSales
+                    .Where(fs => fs.BookID == bookId)
+                    .Select(fs => new
+                    {
+                        fs.FlashSaleID,
+                        fs.BookID,
+                        fs.DiscountPercent,
+                        fs.StartTime,
+                        fs.EndTime
+                    })
+                    .OrderByDescending(fs => fs.StartTime)
+                    .ToListAsync();
+
+                return Ok(flashSales);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi tải Flash Sale của sách", error = ex.Message });
+            }
+        }
+
+        // POST: api/admin/flash-sale
+        [HttpPost("flash-sale")]
+        public async Task<IActionResult> CreateFlashSale([FromBody] CreateFlashSaleDto dto)
+        {
+            try
+            {
+                // Validate input
+                if (!ModelState.IsValid)
+                {
+                    var errors = ModelState
+                        .Where(x => x.Value.Errors.Count > 0)
+                        .Select(x => new { Field = x.Key, Errors = x.Value.Errors.Select(e => e.ErrorMessage) })
+                        .ToList();
+
+                    return BadRequest(new { message = "Dữ liệu không hợp lệ", errors = errors });
+                }
+
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                // Additional validation
+                if (dto.BookID <= 0)
+                {
+                    return BadRequest(new { message = "ID sách không hợp lệ" });
+                }
+
+                // Check if start time is not in the past (allow some buffer for timezone differences)
+                var now = DateTime.UtcNow.AddMinutes(-5); // 5 minute buffer
+                if (dto.StartTime < now)
+                {
+                    return BadRequest(new { message = "Thời gian bắt đầu không thể trong quá khứ" });
+                }
+
+                // Check if book exists
+                var bookExists = await context.Books.AnyAsync(b => b.BookID == dto.BookID);
+                if (!bookExists)
+                    return NotFound(new { message = "Không tìm thấy sách với ID này" });
+
+                if (dto.StartTime >= dto.EndTime)
+                    return BadRequest(new { message = "Thời gian bắt đầu phải nhỏ hơn thời gian kết thúc" });
+
+                // Check for overlapping flash sales for the same book with improved overlap detection
+                var hasOverlap = await context.FlashSales
+                    .Where(fs => fs.BookID == dto.BookID)
+                    .AnyAsync(fs =>
+                        (dto.StartTime >= fs.StartTime && dto.StartTime < fs.EndTime) ||
+                        (dto.EndTime > fs.StartTime && dto.EndTime <= fs.EndTime) ||
+                        (dto.StartTime <= fs.StartTime && dto.EndTime >= fs.EndTime)
+                    );
+
+                if (hasOverlap)
+                    return BadRequest(new { message = "Đã có Flash Sale khác trong khoảng thời gian này cho sách này" });
+
+                // Create flash sale entity
+                var flashSale = new FlashSale
+                {
+                    BookID = dto.BookID,
+                    DiscountPercent = dto.DiscountPercent,
+                    StartTime = dto.StartTime.ToUniversalTime(), // Ensure UTC
+                    EndTime = dto.EndTime.ToUniversalTime()      // Ensure UTC
+                };
+
+                // Add to database
+                context.FlashSales.Add(flashSale);
+                var result = await context.SaveChangesAsync();
+
+                // Clear cache
+                _cache.Remove("FlashSaleData");
+
+                // Return detailed response
+                return Ok(new
+                {
+                    message = "Tạo Flash Sale thành công",
+                    flashSaleId = flashSale.FlashSaleID,
+                    data = new
+                    {
+                        flashSale.FlashSaleID,
+                        flashSale.BookID,
+                        flashSale.DiscountPercent,
+                        flashSale.StartTime,
+                        flashSale.EndTime
+                    }
+                });
+            }
+            catch (DbUpdateException dbEx)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Lỗi cơ sở dữ liệu khi tạo Flash Sale",
+                    error = dbEx.InnerException?.Message ?? dbEx.Message
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Có lỗi không mong muốn xảy ra khi tạo Flash Sale",
+                    error = ex.Message
+                });
+            }
+        }
+
+        // PUT: api/admin/flash-sale/{id}
+        [HttpPut("flash-sale/{id}")]
+        public async Task<IActionResult> UpdateFlashSale(int id, [FromBody] UpdateFlashSaleDto dto)
+        {
+            try
+            {
+                if (!ModelState.IsValid)
+                    return BadRequest(ModelState);
+
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var flashSale = await context.FlashSales.FindAsync(id);
+                if (flashSale == null)
+                    return NotFound(new { message = "Không tìm thấy Flash Sale" });
+
+                if (dto.StartTime >= dto.EndTime)
+                    return BadRequest(new { message = "Thời gian bắt đầu phải nhỏ hơn thời gian kết thúc" });
+
+                var hasOverlap = await context.FlashSales
+                    .Where(fs => fs.BookID == flashSale.BookID && fs.FlashSaleID != id)
+                    .AnyAsync(fs =>
+                        (dto.StartTime >= fs.StartTime && dto.StartTime < fs.EndTime) ||
+                        (dto.EndTime > fs.StartTime && dto.EndTime <= fs.EndTime) ||
+                        (dto.StartTime <= fs.StartTime && dto.EndTime >= fs.EndTime)
+                    );
+
+                if (hasOverlap)
+                    return BadRequest(new { message = "Đã có Flash Sale khác trong khoảng thời gian này cho sách này" });
+
+                flashSale.DiscountPercent = dto.DiscountPercent;
+                flashSale.StartTime = dto.StartTime;
+                flashSale.EndTime = dto.EndTime;
+
+                await context.SaveChangesAsync();
+
+                return Ok(new { message = "Cập nhật Flash Sale thành công" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi cập nhật Flash Sale", error = ex.Message });
+            }
+        }
+
+        // DELETE: api/admin/flash-sale/{id}
+        [HttpDelete("flash-sale/{id}")]
+        public async Task<IActionResult> DeleteFlashSale(int id)
+        {
+            try
+            {
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var flashSale = await context.FlashSales.FindAsync(id);
+                if (flashSale == null)
+                    return NotFound(new { message = "Không tìm thấy Flash Sale" });
+
+                context.FlashSales.Remove(flashSale);
+                await context.SaveChangesAsync();
+
+                return Ok(new { message = "Xóa Flash Sale thành công" });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi xóa Flash Sale", error = ex.Message });
+            }
+        }
+
+        // GET: api/admin/flash-sale/active
+        [HttpGet("flash-sale/active")]
+        public async Task<IActionResult> GetActiveFlashSales()
+        {
+            try
+            {
+                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
+                if (context == null)
+                    return StatusCode(500, new { message = "Database context not found." });
+
+                var now = DateTime.UtcNow;
+                var activeFlashSales = await context.FlashSales
+                    .Include(fs => fs.Book)
+                    .Where(fs => fs.StartTime <= now && fs.EndTime >= now)
+                    .Select(fs => new
+                    {
+                        fs.FlashSaleID,
+                        fs.BookID,
+                        fs.DiscountPercent,
+                        fs.StartTime,
+                        fs.EndTime,
+                        BookTitle = fs.Book.Title,
+                        BookPrice = fs.Book.Price,
+                        BookImgURL = fs.Book.ImgURL1
+                    })
+                    .ToListAsync();
+
+                return Ok(activeFlashSales);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Có lỗi xảy ra khi tải Flash Sale đang hoạt động", error = ex.Message });
+            }
+        }
+
         #endregion
     }
 
     // Helper classes for request bodies
+    public class CreateBookRequest
+    {
+        [Required(ErrorMessage = "Title is required")]
+        [StringLength(500, ErrorMessage = "Title cannot exceed 500 characters")]
+        public string Title { get; set; }
+
+        [Required(ErrorMessage = "Author is required")]
+        [StringLength(200, ErrorMessage = "Author cannot exceed 200 characters")]
+        public string Author { get; set; }
+
+        [StringLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+        public string? Description { get; set; }
+
+        [Required(ErrorMessage = "Price is required")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Price must be greater than 0")]
+        public decimal Price { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "Stock cannot be negative")]
+        public int Stock { get; set; }
+
+        [Required(ErrorMessage = "Category is required")]
+        public int CategoryID { get; set; }
+
+        [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100")]
+        public int Discount { get; set; }
+
+        public string? ImgURL1 { get; set; }
+        public string? ImgURL2 { get; set; }
+        public string? ImgURL3 { get; set; }
+
+        [StringLength(200, ErrorMessage = "Supplier cannot exceed 200 characters")]
+        public string? Supplier { get; set; }
+
+        [Range(1000, 9999, ErrorMessage = "Publish year must be a valid year")]
+        public int PublishYear { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "Page number cannot be negative")]
+        public int PageNum { get; set; }
+
+        [StringLength(50, ErrorMessage = "Language cannot exceed 50 characters")]
+        public string? Language { get; set; }
+
+        [StringLength(50, ErrorMessage = "Binding cannot exceed 50 characters")]
+        public string? Binding { get; set; }
+
+        [StringLength(20, ErrorMessage = "Age group cannot exceed 20 characters")]
+        public string? AgeGroup { get; set; }
+    }
+
+    public class UpdateBookRequest
+    {
+        [Required(ErrorMessage = "Title is required")]
+        [StringLength(500, ErrorMessage = "Title cannot exceed 500 characters")]
+        public string Title { get; set; }
+
+        [Required(ErrorMessage = "Author is required")]
+        [StringLength(200, ErrorMessage = "Author cannot exceed 200 characters")]
+        public string Author { get; set; }
+
+        [StringLength(2000, ErrorMessage = "Description cannot exceed 2000 characters")]
+        public string? Description { get; set; }
+
+        [Required(ErrorMessage = "Price is required")]
+        [Range(0.01, double.MaxValue, ErrorMessage = "Price must be greater than 0")]
+        public decimal Price { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "Stock cannot be negative")]
+        public int Stock { get; set; }
+
+        [Required(ErrorMessage = "Category is required")]
+        public int CategoryID { get; set; }
+
+        [Range(0, 100, ErrorMessage = "Discount must be between 0 and 100")]
+        public int Discount { get; set; }
+
+        public string? ImgURL1 { get; set; }
+        public string? ImgURL2 { get; set; }
+        public string? ImgURL3 { get; set; }
+
+        [StringLength(200, ErrorMessage = "Supplier cannot exceed 200 characters")]
+        public string? Supplier { get; set; }
+
+        [Range(1000, 9999, ErrorMessage = "Publish year must be a valid year")]
+        public int PublishYear { get; set; }
+
+        [Range(0, int.MaxValue, ErrorMessage = "Page number cannot be negative")]
+        public int PageNum { get; set; }
+
+        [StringLength(50, ErrorMessage = "Language cannot exceed 50 characters")]
+        public string? Language { get; set; }
+
+        [StringLength(50, ErrorMessage = "Binding cannot exceed 50 characters")]
+        public string? Binding { get; set; }
+
+        [StringLength(20, ErrorMessage = "Age group cannot exceed 20 characters")]
+        public string? AgeGroup { get; set; }
+    }
+
     public class OrderStatusUpdate
     {
         public string Status { get; set; }
@@ -737,5 +1064,35 @@ namespace FriendwithBooksBackend.Controllers
     {
         public int UserId { get; set; }
         public List<int> MessageIds { get; set; }
+    }
+
+    // DTOs for Flash Sale
+    public class CreateFlashSaleDto
+    {
+        [Required]
+        public int BookID { get; set; }
+
+        [Required]
+        [Range(1, 90, ErrorMessage = "Phần trăm giảm giá phải từ 1% đến 90%")]
+        public int DiscountPercent { get; set; }
+
+        [Required]
+        public DateTime StartTime { get; set; }
+
+        [Required]
+        public DateTime EndTime { get; set; }
+    }
+
+    public class UpdateFlashSaleDto
+    {
+        [Required]
+        [Range(1, 90, ErrorMessage = "Phần trăm giảm giá phải từ 1% đến 90%")]
+        public int DiscountPercent { get; set; }
+
+        [Required]
+        public DateTime StartTime { get; set; }
+
+        [Required]
+        public DateTime EndTime { get; set; }
     }
 }
