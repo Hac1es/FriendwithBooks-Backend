@@ -47,7 +47,7 @@ namespace FriendwithBooksBackend.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     FullName = table.Column<string>(type: "text", nullable: false),
                     Email = table.Column<string>(type: "text", nullable: false),
-                    Password = table.Column<string>(type: "text", nullable: false),
+                    Password = table.Column<string>(type: "text", nullable: true),
                     Phone = table.Column<string>(type: "text", nullable: true),
                     Address = table.Column<string>(type: "text", nullable: true),
                     Avatar = table.Column<string>(type: "text", nullable: true),

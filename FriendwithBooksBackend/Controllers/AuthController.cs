@@ -66,32 +66,22 @@ namespace FriendwithBooksBackend.Controllers
         }
 
         // POST: api/Auth/googleLogin
-        /*[HttpPost("googleLogin")]
+        [HttpPost("googleLogin")]
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginDto dto)
         {
-            GoogleJsonWebSignature.Payload payload;
-            try
-            {
-                payload = await GoogleJsonWebSignature.ValidateAsync(dto.IdToken);
-            }
-            catch
-            {
-                return Unauthorized(new { message = "Token Google không hợp lệ" });
-            }
-
-            // Kiểm tra user đã tồn tại chưa
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == dto.Email);
             if (user == null)
             {
-                // Đăng ký user mới
                 user = new User
                 {
-                    FullName = payload.Name ?? payload.Email,
-                    Email = payload.Email,
-                    Password = "", // Không cần mật khẩu cho user Google
-                    Avatar = payload.Picture,
+                    FullName = dto.FullName,
+                    Email = dto.Email,
+                    Password = "",
+                    Phone = "",
+                    Address = "",
                     RegistrationDate = DateTime.UtcNow,
-                    Role = "user"
+                    Role = "user",
+                    Avatar = "https://i.pinimg.com/736x/8f/1c/a2/8f1ca2029e2efceebd22fa05cca423d7.jpg",
                 };
                 _context.Users.Add(user);
                 await _context.SaveChangesAsync();
@@ -99,7 +89,7 @@ namespace FriendwithBooksBackend.Controllers
 
             var token = GenerateJwtToken(user);
             return Ok(new { token });
-        }*/
+        }
 
         // PUT: api/Auth/updateProfile
         [Authorize]
@@ -128,7 +118,7 @@ namespace FriendwithBooksBackend.Controllers
             return Ok(new { token });
         }
 
-        // PUT: api/Auth/forgotPassword
+        // POST: api/Auth/forgotPassword
         [HttpPost("forgotPassword")]
         public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordDto dto)
         {
@@ -206,7 +196,8 @@ namespace FriendwithBooksBackend.Controllers
 
         public class GoogleLoginDto
         {
-            public string IdToken { get; set; }
+            public string Email { get; set; }
+            public string FullName { get; set; }
         }
 
         public class UpdateProfileDto
