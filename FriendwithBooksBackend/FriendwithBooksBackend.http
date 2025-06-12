@@ -1,0 +1,6 @@
+@FriendwithBooksBackend_HostAddress = http://localhost:5240
+
+GET {{FriendwithBooksBackend_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
