@@ -307,66 +307,6 @@ namespace FriendwithBooksBackend.Controllers
                 return StatusCode(500, new { message = $"Internal server error: {ex.Message}" });
             }
         }
-        // DELETE /api/admin/products/bulk-delete
-        [HttpPost("products/bulk-delete")]
-        public async Task<IActionResult> BulkDeleteProducts([FromBody] List<int> productIds)
-        {
-            if (productIds == null || !productIds.Any())
-                return BadRequest(new { message = "No product IDs provided." });
-
-            try
-            {
-                var context = HttpContext.RequestServices.GetService(typeof(FriendwithBooksBackend.Data.DataContext)) as FriendwithBooksBackend.Data.DataContext;
-                if (context == null)
-                    return StatusCode(500, new { message = "Database context not found." });
-
-                var books = await context.Books.Where(b => productIds.Contains(b.BookID)).ToListAsync();
-
-                if (!books.Any())
-                    return NotFound(new { message = "No matching books found." });
-
-                // Check if any books exist in completed orders
-                var blockedBookIds = await context.OrderDetails
-                    .Where(od => productIds.Contains(od.BookID))
-                    .Select(od => od.BookID)
-                    .Distinct()
-                    .ToListAsync();
-
-                var deletableBooks = books.Where(b => !blockedBookIds.Contains(b.BookID)).ToList();
-                var blockedBooks = books.Where(b => blockedBookIds.Contains(b.BookID)).ToList();
-
-                if (deletableBooks.Any())
-                {
-                    // Remove related data
-                    var bookIdsToDelete = deletableBooks.Select(b => b.BookID).ToList();
-
-                    var flashSales = await context.FlashSales.Where(fs => bookIdsToDelete.Contains(fs.BookID)).ToListAsync();
-                    context.FlashSales.RemoveRange(flashSales);
-
-                    var cartItems = await context.Carts.Where(c => bookIdsToDelete.Contains(c.BookID)).ToListAsync();
-                    context.Carts.RemoveRange(cartItems);
-
-                    var reviews = await context.Reviews.Where(r => bookIdsToDelete.Contains(r.BookID)).ToListAsync();
-                    context.Reviews.RemoveRange(reviews);
-
-                    context.Books.RemoveRange(deletableBooks);
-                    await context.SaveChangesAsync();
-
-                    _cache.Remove("BestSellerData");
-                    _cache.Remove("FlashSaleData");
-                }
-
-                return Ok(new
-                {
-                    message = $"Deleted {deletableBooks.Count} products.",
-                    blocked = blockedBooks.Select(b => new { b.BookID, b.Title })
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Internal server error.", error = ex.Message });
-            }
-        }
 
 
         #endregion
@@ -1447,7 +1387,7 @@ namespace FriendwithBooksBackend.Controllers
                     .ToListAsync();
 
                 var totalOrders = ordersInPeriod.Count;
-                var completedOrders = ordersInPeriod.Count(o => o.Status == "delivered");
+                var completedOrders = ordersInPeriod.Count(o => o.Status == "delivered" || o.Status == "Paid");
 
                 double percent = totalOrders > 0 ? (double)completedOrders / totalOrders * 100 : 0;
 
