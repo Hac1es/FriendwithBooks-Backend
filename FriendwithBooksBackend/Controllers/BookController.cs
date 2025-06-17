@@ -177,7 +177,7 @@ namespace FriendwithBooksBackend.Controllers
                             Name = sub.CategoryName ?? string.Empty,
                             TotalStock = _bookRepository.GetBooks()
                                 .Where(b => b.CategoryID == sub.CategoryID)
-                                .Sum(b => b.Stock),
+                                .Count(),
                             sub.CategoryID,
                         })
                         .ToList()
