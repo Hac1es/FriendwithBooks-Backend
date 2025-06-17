@@ -40,6 +40,7 @@ namespace FriendwithBooksBackend.Controllers
                     b.Description,
                     b.Price,
                     b.Stock,
+                    b.Discount,
                     b.ImgURL1,
                     b.ImgURL2,
                     b.ImgURL3,
@@ -59,6 +60,18 @@ namespace FriendwithBooksBackend.Controllers
             {
                 return NotFound(new { message = "Book not found" });
             }
+
+            // Kiểm tra FlashSale hiện tại cho sách này
+            var currentTime = DateTime.UtcNow;
+            var activeFlashSale = await _bookRepository.GetFlashSale()
+                .Where(fs => fs.BookID == id && 
+                            fs.StartTime <= currentTime && 
+                            fs.EndTime >= currentTime)
+                .OrderByDescending(fs => fs.DiscountPercent)
+                .FirstOrDefaultAsync();
+
+            var finalDiscount = activeFlashSale?.DiscountPercent ?? bookData.Discount;
+            var isFlashSale = activeFlashSale != null;
 
             var allCategories = await _categoryRepository.GetCategories().ToListAsync();
             var categoryDict = allCategories.ToDictionary(c => c.CategoryID);
@@ -85,16 +98,66 @@ namespace FriendwithBooksBackend.Controllers
             {
                 b.BookID,
                 b.Title,
+                b.Author,
                 b.Price,
                 b.Discount,
                 b.ImgURL1
             })
             .ToListAsync();
+
+            // Áp dụng FlashSale cho related books
+            var relatedBooksWithFlashSale = new List<object>();
+            foreach (var book in relatedBooks)
+            {
+                var bookFlashSale = await _bookRepository.GetFlashSale()
+                    .Where(fs => fs.BookID == book.BookID && 
+                                fs.StartTime <= currentTime && 
+                                fs.EndTime >= currentTime)
+                    .OrderByDescending(fs => fs.DiscountPercent)
+                    .FirstOrDefaultAsync();
+
+                var bookFinalDiscount = bookFlashSale?.DiscountPercent ?? book.Discount;
+                var bookIsFlashSale = bookFlashSale != null;
+
+                relatedBooksWithFlashSale.Add(new
+                {
+                    book.BookID,
+                    book.Title,
+                    book.Author,
+                    book.Price,
+                    Discount = bookFinalDiscount,
+                    book.ImgURL1,
+                    FlashSale = bookIsFlashSale
+                });
+            }
+
             return Ok(new
             {
-                book = bookData,
+                book = new
+                {
+                    bookData.BookID,
+                    bookData.Title,
+                    bookData.Author,
+                    bookData.Description,
+                    bookData.Price,
+                    bookData.Stock,
+                    bookData.ImgURL1,
+                    bookData.ImgURL2,
+                    bookData.ImgURL3,
+                    bookData.AgeGroup,
+                    bookData.AvgRating,
+                    bookData.TotalRating,
+                    bookData.CategoryID,
+                    bookData.Supplier,
+                    bookData.PublishYear,
+                    bookData.Language,
+                    bookData.PageNum,
+                    bookData.Binding,
+                    Discount = finalDiscount,
+                    isFlashSale
+                },
                 categoryPath = path,
-                relatedBooks = relatedBooks
+                relatedBooks = relatedBooksWithFlashSale
             });
         }
 
@@ -109,12 +172,159 @@ namespace FriendwithBooksBackend.Controllers
                     Parent = parent.CategoryName ?? string.Empty,
                     SubCategories = _categoryRepository.GetCategories()
                         .Where(c => c.ParentID == parent.CategoryID)
-                        .Select(sub => sub.CategoryName ?? string.Empty)
+                        .Select(sub => new
+                        {
+                            Name = sub.CategoryName ?? string.Empty,
+                            TotalStock = _bookRepository.GetBooks()
+                                .Where(b => b.CategoryID == sub.CategoryID)
+                                .Sum(b => b.Stock),
+                            sub.CategoryID,
+                        })
                         .ToList()
                 })
                 .ToDictionaryAsync(x => x.Parent, x => x.SubCategories);
 
             return Ok(categories);
+        }
+
+        //POST: api/Book/category
+        [HttpPost("category")]
+        public async Task<IActionResult> PostCategory([FromBody] CreateCategoryRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.CategoryName))
+                return BadRequest("Tên danh mục không được để trống.");
+
+            // Kiểm tra trùng tên ở cùng cấp
+            if (request.ParentName == null)
+            {
+                // Thêm danh mục cha, kiểm tra trùng với các cha
+                var exists = await _categoryRepository.GetCategories()
+                    .AnyAsync(c => c.ParentID == null && c.CategoryName.ToLower() == request.CategoryName.Trim().ToLower());
+                if (exists)
+                    return BadRequest("Danh mục cha đã tồn tại.");
+
+                var newCategory = new Category
+                {
+                    CategoryName = request.CategoryName.Trim(),
+                    ParentID = null
+                };
+                _categoryRepository.Add(newCategory);
+                await _categoryRepository.SaveChangesAsync();
+                return Ok(newCategory);
+            }
+            else
+            {
+                // Tìm parent
+                var parent = await _categoryRepository.GetCategories()
+                    .FirstOrDefaultAsync(c => c.ParentID == null && c.CategoryName == request.ParentName);
+
+                // Kiểm tra trùng tên con trong cùng cha
+                var exists = await _categoryRepository.GetCategories()
+                    .AnyAsync(c => c.ParentID == parent.CategoryID && c.CategoryName.ToLower() == request.CategoryName.Trim().ToLower());
+                if (exists)
+                    return BadRequest("Danh mục con đã tồn tại trong danh mục cha này.");
+
+                var newCategory = new Category
+                {
+                    CategoryName = request.CategoryName.Trim(),
+                    ParentID = parent.CategoryID
+                };
+                _categoryRepository.Add(newCategory);
+                await _categoryRepository.SaveChangesAsync();
+                return Ok(newCategory);
+            }
+        }
+
+        // PUT: api/Book/category/{id}
+        [HttpPut("category/{id}")]
+        public async Task<IActionResult> UpdateCategory(int id, [FromBody] UpdateCategoryRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.NewName))
+                return BadRequest("Tên danh mục mới không được để trống.");
+
+            var category = await _categoryRepository.GetCategories()
+                .FirstOrDefaultAsync(c => c.CategoryID == id);
+
+            if (category == null)
+                return NotFound("Không tìm thấy danh mục.");
+
+            // Kiểm tra xem có phải đang cố gắng chuyển một danh mục con thành cha của chính nó không
+            if (request.NewParentName != null)
+            {
+                var newParent = await _categoryRepository.GetCategories()
+                    .FirstOrDefaultAsync(c => c.ParentID == null && c.CategoryName == request.NewParentName);
+                
+                if (newParent == null)
+                    return NotFound("Không tìm thấy danh mục cha mới.");
+
+                // Kiểm tra vòng lặp: nếu danh mục con đang cố gắng trở thành cha của chính nó
+                if (newParent.CategoryID == id)
+                    return BadRequest("Không thể chuyển một danh mục thành cha của chính nó.");
+
+                // Kiểm tra trùng tên với các danh mục con khác trong cùng danh mục cha mới
+                var exists = await _categoryRepository.GetCategories()
+                    .AnyAsync(c => c.ParentID == newParent.CategoryID 
+                        && c.CategoryID != id 
+                        && c.CategoryName.ToLower() == request.NewName.Trim().ToLower());
+                if (exists)
+                    return BadRequest("Đã tồn tại danh mục con khác với tên này trong danh mục cha mới.");
+            }
+            else
+            {
+                // Nếu chuyển thành danh mục cha, kiểm tra trùng tên với các danh mục cha khác
+                var exists = await _categoryRepository.GetCategories()
+                    .AnyAsync(c => c.ParentID == null 
+                        && c.CategoryID != id 
+                        && c.CategoryName.ToLower() == request.NewName.Trim().ToLower());
+                if (exists)
+                    return BadRequest("Đã tồn tại danh mục cha khác với tên này.");
+            }
+
+            // Cập nhật thông tin
+            category.CategoryName = request.NewName.Trim();
+            if (request.NewParentName != null)
+            {
+                var newParent = await _categoryRepository.GetCategories()
+                    .FirstOrDefaultAsync(c => c.ParentID == null && c.CategoryName == request.NewParentName);
+                category.ParentID = newParent.CategoryID;
+            }
+            else
+            {
+                category.ParentID = null;
+            }
+
+            await _categoryRepository.SaveChangesAsync();
+            return Ok(category);
+        }
+
+        // DELETE: api/Book/category/{name}
+        [HttpDelete("category/{name}")]
+        public async Task<IActionResult> DeleteCategory(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return BadRequest("Tên danh mục không được để trống.");
+
+            var category = await _categoryRepository.GetCategories()
+                .FirstOrDefaultAsync(c => c.CategoryName.ToLower() == name.Trim().ToLower());
+
+            if (category == null)
+                return NotFound("Không tìm thấy danh mục.");
+
+            // Kiểm tra xem có danh mục con nào không
+            var hasChildren = await _categoryRepository.GetCategories()
+                .AnyAsync(c => c.ParentID == category.CategoryID);
+            if (hasChildren)
+                return BadRequest("Không thể xóa danh mục này vì nó có chứa các danh mục con.");
+
+            // Kiểm tra xem có sách nào thuộc danh mục này không
+            var hasBooks = await _bookRepository.GetBooks()
+                .AnyAsync(b => b.CategoryID == category.CategoryID);
+            if (hasBooks)
+                return BadRequest("Không thể xóa danh mục này vì nó có chứa sách.");
+
+            _categoryRepository.Delete(category);
+            await _categoryRepository.SaveChangesAsync();
+            return Ok(new { message = "Xóa danh mục thành công." });
         }
 
         // GET: api/Book/query?page={page}&promo={promo}&price={price}
@@ -132,7 +342,7 @@ namespace FriendwithBooksBackend.Controllers
             [FromQuery] string? name = null)
         {
             if (page < 1) page = 1;
-            int pageSize = 12;
+            int pageSize = 20;
 
             var query = _bookRepository.GetBooks();
 
@@ -217,13 +427,41 @@ namespace FriendwithBooksBackend.Controllers
                 })
                 .ToListAsync();
 
+            // Áp dụng FlashSale cho tất cả sách
+            var currentTime = DateTime.UtcNow;
+            var booksWithFlashSale = new List<object>();
+            
+            foreach (var book in books)
+            {
+                var activeFlashSale = await _bookRepository.GetFlashSale()
+                    .Where(fs => fs.BookID == book.BookID && 
+                                fs.StartTime <= currentTime && 
+                                fs.EndTime >= currentTime)
+                    .OrderByDescending(fs => fs.DiscountPercent)
+                    .FirstOrDefaultAsync();
+
+                var finalDiscount = activeFlashSale?.DiscountPercent ?? book.Discount;
+                var isFlashSale = activeFlashSale != null;
+
+                booksWithFlashSale.Add(new
+                {
+                    book.BookID,
+                    book.Title,
+                    book.Author,
+                    book.Price,
+                    book.ImgURL1,
+                    Discount = finalDiscount,
+                    isFlashSale
+                });
+            }
+
             return Ok(new
             {
                 currentPage = page,
                 pageSize,
                 totalItems,
                 totalPages,
-                items = books
+                items = booksWithFlashSale
             });
         }
         
@@ -388,14 +626,66 @@ namespace FriendwithBooksBackend.Controllers
                 })
                 .ToListAsync();
 
+            // Áp dụng FlashSale cho tất cả sách
+            var currentTime = DateTime.UtcNow;
+            var booksWithFlashSale = new List<object>();
+            
+            foreach (var book in books)
+            {
+                var activeFlashSale = await _bookRepository.GetFlashSale()
+                    .Where(fs => fs.BookID == book.BookID && 
+                                fs.StartTime <= currentTime && 
+                                fs.EndTime >= currentTime)
+                    .OrderByDescending(fs => fs.DiscountPercent)
+                    .FirstOrDefaultAsync();
+
+                var finalDiscount = activeFlashSale?.DiscountPercent ?? book.Discount;
+                var isFlashSale = activeFlashSale != null;
+
+                booksWithFlashSale.Add(new
+                {
+                    book.BookID,
+                    book.Title,
+                    book.Author,
+                    book.Description,
+                    book.Price,
+                    book.Stock,
+                    book.ImgURL1,
+                    book.ImgURL2,
+                    book.ImgURL3,
+                    book.Supplier,
+                    book.PublishYear,
+                    book.PageNum,
+                    book.Language,
+                    book.AgeGroup,
+                    book.CategoryID,
+                    book.Binding,
+                    book.AvgRating,
+                    book.TotalRating,
+                    Discount = finalDiscount,
+                    isFlashSale
+                });
+            }
+
             return Ok(new
             {
                 currentPage = page,
                 pageSize,
                 totalItems,
                 totalPages,
-                items = books
+                items = booksWithFlashSale
             });
+        }
+        public class CreateCategoryRequest
+        {
+            public string? CategoryName { get; set; }
+            public string? ParentName { get; set; } // null nếu là danh mục cha
+        }
+
+        public class UpdateCategoryRequest
+        {
+            public string? NewName { get; set; }
+            public string? NewParentName { get; set; } // null nếu muốn chuyển thành danh mục cha
         }
     }
 }

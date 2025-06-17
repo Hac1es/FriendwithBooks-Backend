@@ -1387,7 +1387,7 @@ namespace FriendwithBooksBackend.Controllers
                     .ToListAsync();
 
                 var totalOrders = ordersInPeriod.Count;
-                var completedOrders = ordersInPeriod.Count(o => o.Status == "delivered");
+                var completedOrders = ordersInPeriod.Count(o => o.Status == "delivered" || o.Status == "Paid");
 
                 double percent = totalOrders > 0 ? (double)completedOrders / totalOrders * 100 : 0;
 

@@ -105,6 +105,7 @@ namespace FriendwithBooksBackend.Services
                             book.BookID,
                             book.Title,
                             book.Price,
+                            book.Author,
                             ImgURL = book.ImgURL1,
                             flash.DiscountPercent,
                             flash.StartTime,
@@ -126,10 +127,12 @@ namespace FriendwithBooksBackend.Services
         private async Task UpdateBestSellerCache(IBookRepository repo, CancellationToken stoppingToken)
         {
             var bestSellerData = await repo.GetBooks()
+                .OrderByDescending(c => c.BookID)
                 .Select(c => new
                 {
                     c.BookID,
                     c.Title,
+                    c.Author,
                     c.Description,
                     ImgURL = c.ImgURL1
                 })

@@ -44,10 +44,12 @@ namespace FriendwithBooksBackend.Controllers
 
                 _logger.LogWarning("Cache miss for best sellers, fetching from database");
                 var bestSellers = await _bookRepository.GetBooks()
+                    .OrderByDescending(c => c.BookID)
                     .Select(c => new
                     {
                         c.BookID,
                         c.Title,
+                        c.Author,
                         c.Description,
                         ImgURL = c.ImgURL1
                     })
@@ -88,6 +90,7 @@ namespace FriendwithBooksBackend.Controllers
                             book.BookID,
                             book.Title,
                             book.Price,
+                            book.Author,
                             ImgURL = book.ImgURL1,
                             flash.DiscountPercent,
                             flash.StartTime,
