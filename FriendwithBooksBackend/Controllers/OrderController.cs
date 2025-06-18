@@ -24,7 +24,7 @@ namespace FriendwithBooksBackend.Controllers
             var userIdClaim = User.FindFirst("userId")?.Value;
             if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
             {
-                return Unauthorized(new { success = false, message = "Không xác thực được người dùng hoặc ID người dùng không hợp lệ." });
+                return BadRequest(new { success = false, message = "Không xác thực được người dùng hoặc ID người dùng không hợp lệ." });
             }
             var orders = await _context.Orders
                 .Where(o => o.UserID == userId)
@@ -36,25 +36,25 @@ namespace FriendwithBooksBackend.Controllers
 
             var result = orders.Select(o => new
             {
-                o.OrderID,
-                o.OrderDate,
-                o.TotalAmount,
-                o.Status,
+                OrderID = o.OrderID,
+                OrderDate = o.OrderDate,
+                TotalAmount = o.TotalAmount,
+                status = o.Status?.ToLower(),
                 PaymentMethod = o.PaymentMethod?.MethodName,
                 PaymentStatus = o.Transaction?.PaymentStatus,
                 ItemCount = o.OrderDetails?.Sum(od => od.Quantity) ?? 0,
                 CanCancel = CanCancelOrder(o),
                 OrderDetails = o.OrderDetails?.Select(od => new
                 {
-                    od.OrderDetailID,
-                    od.BookID,
-                    od.Quantity,
-                    od.UnitPrice,
+                    OrderDetailID = od.OrderDetailID,
+                    BookID = od.BookID,
+                    Quantity = od.Quantity,
+                    UnitPrice = od.UnitPrice,
                     Book = new
                     {
-                        od.Book?.Title,
-                        od.Book?.Author,
-                        od.Book?.ImgURL1
+                        Title = od.Book?.Title,
+                        Author = od.Book?.Author,
+                        ImgURL1 = od.Book?.ImgURL1
                     }
                 })
             });
