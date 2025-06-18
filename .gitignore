@@ -363,3 +363,5 @@ MigrationBackup/
 FodyWeavers.xsd
 firebase_secret.json
 FriendwithBooksBackend/firebase_secret.json
+/FriendwithBooksBackend/firebase_secret.json
+/FriendwithBooksBackend/firebase_secret.json
