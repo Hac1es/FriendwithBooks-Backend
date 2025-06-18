@@ -7,13 +7,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Authorization;
 
 namespace FriendwithBooksBackend.Controllers
 {
     [Route("api/admin")]
     [ApiController]
     // In a real application, add authentication middleware and authorize attribute
-    // [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "admin")]
     public class AdminController : ControllerBase
     {
         private readonly IBookRepository _bookRepository;
